@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+
+  eureka:
+    build: ./Eureka-Service-Registry
+    container_name: eureka-registry
+    ports:
+      - "8761:8761"
+
+  redis:
+    image: redis:7.0
+    container_name: redis-cache
+    restart: always
+    ports:
+      - "6379:6379"
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: payments
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+  validation:
+    build: ./Payment Validation Service/validation
+    container_name: validation-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    ports:
+      - "8081:8081"
+    depends_on:
+      - eureka
+      - processing
+
+  processing:
+    build: ./Payment Processing Service/payments
+    container_name: processing-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    ports:
+      - "8082:8082"
+    depends_on:
+      - eureka
+      - paypal-provider
+      - mysql
+      - redis
+
+  paypal-provider:
+    build: ./Paypal Provider Service/my paypal provider
+    container_name: paypal-provider-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    ports:
+      - "8083:8083"
+    depends_on:
+      - eureka
+      - redis
+
+volumes:
+  mysql-data:
