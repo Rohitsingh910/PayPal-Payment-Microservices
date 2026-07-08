@@ -65,14 +65,15 @@ sequenceDiagram
 | **`Payment Processing Service`** | `8082` | `local` / `docker` | Orchestrates the payment state engine, updates the database, and communicates with payment adapters. |
 | **`Paypal Provider Service`** | `8083` | `local` / `docker` | Adapter service that translates internal gateway requests to PayPal REST endpoints. |
 
----
+### Service Discovery & Registry Dashboard (Eureka)
 
-### Service Discovery Dashboard (Eureka)
+Once services start up, they register dynamically with Eureka discovery. You can monitor registered instances and system resource metrics:
 
-The active registration and mapping details of the microservices can be monitored through the Eureka dashboard:
-
+#### Registered Applications status:
 ![Eureka Registry Dashboard](docs/screenshots/eureka_dashboard.png)
-![Eureka Service Metrics](docs/screenshots/eureka_general_info.png)
+
+#### Eureka Server General Metrics:
+![Eureka Server General Info](docs/screenshots/eureka_metrics.png)
 
 ---
 
@@ -191,6 +192,18 @@ During testing, you can check active caches by reviewing container logs for `pay
 
 ---
 
+## Database Initialization & State Verification (MySQL)
+
+### 1. Database Table Creation Logs:
+Running the table schema scripts generates the core schema and inserts base status constraints:
+![MySQL Workbench Database Log](docs/screenshots/mysql_setup_log.png)
+
+### 2. Transaction Verification:
+Once the capture step completes, the transaction state transitions to `4` (APPROVED) or `5` (SUCCESS) in the MySQL database:
+![MySQL Workbench Result](docs/screenshots/mysql_workbench_result.png)
+
+---
+
 ## REST API Specifications
 
 ### 1. Initiate Payment Flow
@@ -220,10 +233,6 @@ During testing, you can check active caches by reviewing container logs for `pay
 ### 2. Capture Completed Order
 *   **Endpoint**: `POST http://localhost:8081/validation/{txnReference}/completePayment`
     *(Use the `txnReference` generated in step 1)*
-
-### Database State Verification (MySQL Workbench)
-Once the capture step completes, the transaction state transitions to `4` (APPROVED) or `5` (SUCCESS) in the MySQL database:
-![MySQL Workbench Result](docs/screenshots/mysql_workbench_result.png)
 
 ---
 
