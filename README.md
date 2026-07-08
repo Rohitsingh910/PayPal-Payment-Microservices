@@ -56,11 +56,13 @@ sequenceDiagram
 
 ### Active Eureka Registry Dashboard
 
-Below is the running Eureka Discovery Server dashboard displaying all three registered services (`PROCESSING`, `VALIDATION`, and `PAYPAL-PROVIDER`) in an `UP` status:
+To ensure dynamic load balancing and failover, all microservice instances register automatically with the Eureka Discovery Server.
 
 ![Eureka Dashboard - Registered Instances](./assets/eureka_instances.png)
+*Figure 1: Eureka Service Registry Dashboard showing the registered active microservice instances (PAYPAL-PROVIDER, PROCESSING, and VALIDATION) in healthy state (UP) on port 8761.*
 
 ![Eureka Dashboard - General Info](./assets/eureka_general_info.png)
+*Figure 2: Eureka Service Registry Node configuration stats, reflecting local system memory allocations, host CPU cores, and active replica nodes.*
 
 ---
 
@@ -175,23 +177,31 @@ During testing, you can check active caches by reviewing container logs for `pay
 
 ### Docker Desktop Container Orchestration
 
-You can monitor and manage the running containers and resource consumption directly within the Docker Desktop GUI:
+You can monitor, inspect, and trace the running containers directly within the Docker Desktop GUI:
 
 ![Docker Desktop Container List](./assets/docker_desktop_empty.png)
+*Figure 3: Docker Desktop container dashboard displaying the unified `payment-system-main` container stack running successfully.*
 
-![Docker Desktop Container Resource Stats](./assets/docker_desktop_stats.png)
+![Docker Desktop Consolidated Logs](./assets/docker_logs_viewer.png)
+*Figure 4: Consolidated logging interface in Docker Desktop showing container console traces, Eureka heartbeats, and inter-service HTTP communications.*
 
-4.  **Trace Application Logs**:
-    Observe live logging streams:
-    ```cmd
-    docker compose logs -f
-    ```
+![Docker Desktop Inspect metadata](./assets/docker_validation_inspect.png)
+*Figure 5: Inspect configurations panel for the Validation container showing execution paths, image digest references, and environment configuration profiles.*
 
-5.  **Shutdown and Clean Volumes**:
-    Stop containers and remove runtime storage configurations:
-    ```cmd
-    docker compose down -v
-    ```
+---
+
+## Performance Telemetry & Container Monitoring
+
+The Docker Desktop metrics dashboard tracks live performance telemetry for active containers in the stack:
+
+![Eureka telemetry](./assets/docker_eureka_stats.png)
+*Figure 6: Live CPU and memory consumption statistics (265.6MB) for the Eureka Service Registry container.*
+
+![Processing service telemetry](./assets/docker_processing_stats.png)
+*Figure 7: Live CPU and memory telemetry (222.2MB) for the Processing Service database coordinator container.*
+
+![Redis telemetry](./assets/docker_redis_stats.png)
+*Figure 8: Performance telemetry metrics showing CPU, memory footprint (3.11MB), and networking I/O for the Redis cache.*
 
 ---
 
@@ -200,6 +210,7 @@ You can monitor and manage the running containers and resource consumption direc
 The database tables and status configurations initialization inside MySQL Workbench:
 
 ![MySQL Workbench Schema Initialization](./assets/mysql_workbench.png)
+*Figure 9: MySQL Workbench Console capturing the schema initialization script execution. Displays table creation queries (`Payment_Method`, `Transaction_Status`, `Provider`) and successful constraint builds.*
 
 ---
 
