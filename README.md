@@ -1,214 +1,220 @@
-# PayPal Payment Microservices System
+# PayPal Microservices Payment Gateway
 
-A robust, enterprise-grade Spring Boot microservices-based payment processing gateway. This system coordinates secure online payments by integrating with official PayPal Sandbox REST APIs, utilizing Eureka Service Discovery, MySQL persistence, and Redis for access token caching.
+A distributed payment gateway backend built using Spring Boot, Eureka Service Discovery, Redis Cache, and MySQL. This system coordinates multi-step payment flows (Create, Initiate, and Capture) using PayPal Sandbox REST APIs.
 
 ---
 
-## Architecture Diagram
+## System Architecture
 
-The system employs a decentralized microservices architecture where services communicate over a virtualized container network and automatically register with Eureka.
+The gateway is structured as a collection of microservices communicating inside a virtual container network managed by Docker Compose.
 
 ```mermaid
-flowchart TD
-    subgraph Client Space
-        Client[Client / REST Client]
-    end
+sequenceDiagram
+    autonumber
+    actor User as Client
+    participant Val as Validation Service
+    participant Proc as Processing Service
+    participant Prov as PayPal Provider
+    participant DB as MySQL DB
+    participant Redis as Redis Cache
+    participant PayPal as PayPal API
 
-    subgraph Service Mesh (Docker Network)
-        Gateway[Validation Service \n Port 8081]
-        Discovery[Eureka Service Registry \n Port 8761]
-        Processing[Processing Service \n Port 8082]
-        Provider[Paypal Provider Service \n Port 8083]
-        Database[(MySQL Database \n Port 3306/3308)]
-        Cache[(Redis Token Cache \n Port 6379)]
-    end
+    User->>Val: POST /validation/createPayment (Payload)
+    Note over Val: Validate Request Fields
+    Val->>Proc: Forward Request (HTTP)
+    Note over Proc: State: CREATED (1)
+    Proc->>DB: INSERT Transaction (CREATED)
+    Proc->>Val: Return txnReference
+    Val->>User: 200 OK (txnReference)
 
-    subgraph External Provider
-        PaypalAPI[PayPal Sandbox REST API]
+    User->>Val: POST /validation/{txnReference}/initiate
+    Val->>Proc: Forward Request
+    Note over Proc: State: INITIATED (2)
+    Proc->>DB: UPDATE Transaction (INITIATED)
+    Proc->>Prov: Call Create Order (HTTP)
+    
+    rect rgb(200, 220, 240)
+        Note over Prov: Token Request Flow
+        Prov->>Redis: GET paypal:access_token
+        alt Cache Hit
+            Redis-->>Prov: Return Cached Token
+        else Cache Miss
+            Prov->>PayPal: POST /v1/oauth2/token
+            PayPal-->>Prov: Return Access Token & expires_in
+            Prov->>Redis: SET paypal:access_token (TTL: expires_in - 60s)
+        end
     end
-
-    Client -->|1. Create Payment| Gateway
-    Gateway -->|2. Route & Validate| Processing
-    Processing -->|3. Register Txn| Database
-    Processing -->|4. Request PayPal Order| Provider
-    Provider -->|5. Check Cache| Cache
-    Provider -->|6. OAuth & Order Call| PaypalAPI
-    Provider -->|7. Return Order Token & URL| Processing
-    Processing -->|8. Update Status PENDING| Database
-    Processing -->|9. Send Redirect URL| Gateway
-    Gateway -->|10. Return Response| Client
+    
+    Prov->>PayPal: POST /v2/checkout/orders (Bearer Token)
+    PayPal-->>Prov: Order ID & Redirect Link
+    Prov-->>Proc: Return Order Details
+    Note over Proc: State: PENDING (3)
+    Proc->>DB: UPDATE Transaction (PENDING)
+    Proc-->>Val: Return redirectUrl
+    Val-->>User: 200 OK (redirectUrl & token)
 ```
 
 ---
 
-## Microservices Core Details
+## Microservices Breakdown
 
-| Service Name | Description | Port (Local) | Port (Docker Container) |
+| Service Directory | Port | Profile | Purpose |
 | :--- | :--- | :--- | :--- |
-| **`Eureka Registry`** | Handles service registration, discovery, and dynamic routing. | `8761` | `8761` |
-| **`Validation Service`** | Acts as the public gateway. Performs syntax and business rule validations. | `8081` | `8081` |
-| **`Processing Service`** | Manages database lifecycle state transitions (Created $\rightarrow$ Pending $\rightarrow$ Approved). | `8082` | `8082` |
-| **`PayPal Provider Service`** | Communicates with the external PayPal Sandbox endpoints. | `8083` | `8083` |
+| **`Eureka-Service-Registry`** | `8761` | `default` | Service discovery registry where all microservices register dynamically. |
+| **`Payment Validation Service`** | `8081` | `local` / `docker` | Gateway entrypoint. Validates payload fields and routes calls to the processing coordinator. |
+| **`Payment Processing Service`** | `8082` | `local` / `docker` | Orchestrates the payment state engine, updates the database, and communicates with payment adapters. |
+| **`Paypal Provider Service`** | `8083` | `local` / `docker` | Adapter service that translates internal gateway requests to PayPal REST endpoints. |
 
 ---
 
-## Features & Implementation Details
+## Detailed Directory and Code Structure
 
-*   **Lombok JDK 20/21 Support**: Configured with Lombok `1.18.36` to prevent compiler initialization crashes (`TypeTag :: UNKNOWN`) under modern Java runtimes.
-*   **Redis-Backed Access Token Caching**: In `TokenService`, rather than making heavy roundtrips to PayPal OAuth for every request, OAuth tokens are stored in the `redis-cache` container. The token is cached dynamically using the PayPal response `expires_in` field minus 60 seconds (safe buffer TTL).
-*   **Decoupled State Processors**: Employs the **Factory** and **State/Strategy** patterns to handle transaction status updates (`CreatedStatusProcessor`, `ApprovedStatusProcessor`, etc.) avoiding long conditional chains.
-*   **Fault-Tolerant Containerization**: Completely configured with Docker Compose where databases and Redis spin up automatically alongside services inside a shared virtual bridge network.
-
----
-
-## Project Directory Tree
-
-The workspace is organized into separate Maven modules for clean boundaries:
+Below is the directory mapping of the project modules:
 
 ```text
 Payment-System-main/
 │
-├── Eureka-Service-Registry/             # Eureka Discovery Server
-│   ├── src/
-│   ├── Dockerfile
+├── Eureka-Service-Registry/
+│   ├── src/main/java/com/mycomp/eureka/EurekaApplication.java  # Registry startup
+│   └── Dockerfile
+│
+├── Payment Validation Service/validation/
+│   ├── src/main/java/com/mycomp/validation/
+│   │   ├── controller/ValidationController.java                # Client REST controller
+│   │   ├── exception/GlobalExceptionHandler.java               # Centralized HTTP error mapper
+│   │   └── service/impl/ValidationServiceImpl.java             # Request constraint checker
 │   └── pom.xml
 │
-├── Payment Processing Service/          # State lifecycle controller
-│   └── payments/
-│       ├── src/                         # Includes schema.sql / data.sql
-│       └── pom.xml
+├── Payment Processing Service/payments/
+│   ├── src/main/java/com/mycomp/payments/
+│   │   ├── controller/PaymentController.java                   # Inter-service receiver endpoint
+│   │   ├── dao/impl/TransactionDaoImpl.java                    # Raw database queries (Spring JDBC)
+│   │   ├── services/impl/statusprocessors/                     # Strategy pattern classes
+│   │   │   ├── CreatedStatusProcessor.java                     # State: CREATED logic
+│   │   │   ├── InitiatedStatusProcessor.java                   # State: INITIATED logic
+│   │   │   ├── PendingStatusProcessor.java                     # State: PENDING logic
+│   │   │   └── ApprovedStatusProcessor.java                    # State: APPROVED logic
+│   │   └── services/factory/PaymentStatusFactory.java          # Factory mapping status IDs to processors
+│   ├── src/main/resources/schema.sql                           # MySQL Table definitions
+│   ├── src/main/resources/data.sql                             # Master statuses seed data
+│   └── pom.xml
 │
-├── Payment Validation Service/          # Gateway entrypoint & validator
-│   └── validation/
-│       ├── src/
-│       └── pom.xml
+├── Paypal Provider Service/my paypal provider/
+│   ├── src/main/java/com/mycomp/payments/
+│   │   ├── controller/OrderController.java                     # REST Controller mapping requests
+│   │   ├── service/TokenService.java                           # Redis token manager (OAuth)
+│   │   └── service/impl/PaymentServiceImpl.java                # PayPal Order Create & Capture implementation
+│   └── pom.xml
 │
-├── Paypal Provider Service/             # PayPal REST integration module
-│   └── my paypal provider/
-│       ├── src/
-│       └── pom.xml
-│
-├── docker-compose.yml                   # Container orchestration spec
-├── .gitignore                           # Git ignore rules for Maven/IDEs
-└── README.md                            # Documentation
+├── docker-compose.yml                                          # Core container orchestrator
+└── .gitignore                                                  # Version control excludes
 ```
 
 ---
 
-## 🐋 Beginner's Guide: Understanding Docker
+## Caching Strategy (Redis)
 
-If this is your first time using **Docker**, think of it as a **shipping container system** for your code. 
+To limit external OAuth latency, `TokenService.java` is integrated with a Redis cache running on port `6379`.
 
-1.  **What is a Container?**
-    Normally, to run this system, you need to install Java 17, MySQL, and Redis on your computer. If someone else runs your code, they must install the same things. A **Docker Container** packages your code and *exactly* the environment it needs (Java, libraries, OS settings) into a single box. It runs the same on any computer.
-2.  **Image vs. Container**:
-    *   **Image**: A read-only blueprint or template (like a CD-ROM or installer file).
-    *   **Container**: The actual running instance of that Image (like a game running after installation).
-3.  **What is Docker Compose?**
-    Since our project has 4 Java microservices, 1 MySQL database, and 1 Redis cache (6 containers total), starting them one-by-one is tedious. **Docker Compose** reads the `docker-compose.yml` file and starts, configures, and links all 6 containers with a single command!
+### Token Fetch Workflow
 
----
-
-## 🚀 Running the Project
-
-### Option 1: Running with Docker Compose (Recommended)
-
-Make sure you have **Docker Desktop** installed and running on your system.
-
-#### 1. Build the JAR packages locally:
-Before running docker containers, Maven must build the JAR binaries:
-```cmd
-# Run this command in each of the 4 microservice directories containing a pom.xml
-.\mvnw.cmd clean package -DskipTests
+```mermaid
+graph TD
+    A[Request Access Token] --> B{Token in Redis?}
+    B -->|Yes - Cache Hit| C[Read Token from Redis]
+    B -->|No - Cache Miss| D[Call PayPal POST /v1/oauth2/token]
+    D --> E[Extract access_token & expires_in]
+    E --> F[Cache in Redis with TTL: expires_in - 60s]
+    F --> G[Return Token]
+    C --> G
 ```
 
-#### 2. Start the Container Stack:
-Open your terminal in the project root folder (where `docker-compose.yml` is located) and run:
-```cmd
-docker compose up -d
-```
-> [!NOTE]
-> The `-d` flag runs the containers in "detached" (background) mode, freeing up your terminal.
-
-#### 3. View Running Status:
-To see which containers are active:
-```cmd
-docker compose ps
-```
-
-#### 4. Check Container Logs:
-To see logs of a specific service (for example, the PayPal provider):
-```cmd
-docker compose logs -f paypal-provider-service
-```
-> [!NOTE]
-> Press `Ctrl + C` to stop viewing live logs.
-
-#### 5. Stop the Containers:
-To stop all services and free up system memory:
-```cmd
-docker compose down
+During testing, you can check active caches by reviewing container logs for `paypal-provider-service`:
+```text
+2026-07-08T04:55:13.203Z INFO - Retrieving access token from TokenService
+2026-07-08T04:55:13.204Z INFO - Returning cached access token from Redis
 ```
 
 ---
 
-### Option 2: Native Local Execution (Without Docker)
+## Docker Environment Lifecycle Management
 
-If you wish to run the microservices directly on your machine:
-1.  Ensure you have a local **MySQL Server** running on port `3306` (or `3307`) with database `payments` initialized.
-2.  Ensure you have a local **Redis Server** running on port `6379`.
-3.  Run the **Eureka Server** first:
+### Setup Prerequisites
+*   Install **Docker Desktop** on Windows.
+*   Verify command availability: `docker --version` and `docker compose version`
+
+### Deployment Commands
+
+1.  **Package Maven Artifacts**:
+    Compile the Java code and package active profiles into targeted JARs before running docker:
     ```cmd
-    cd "Eureka-Service-Registry"
-    .\mvnw.cmd spring-boot:run
+    # Run in the root containing mvnw
+    .\mvnw.cmd clean package -DskipTests
     ```
-4.  Run the other three services using the `local` profile:
+
+2.  **Start Services**:
+    Build the container images and launch the stack in the background:
     ```cmd
-    .\mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local
+    docker compose up --build -d
+    ```
+
+3.  **Check Service Statuses**:
+    Verify that all 6 containers (`eureka`, `mysql`, `redis`, `validation`, `processing`, and `paypal-provider`) are `Up`:
+    ```cmd
+    docker compose ps
+    ```
+    *Note: The MySQL container maps to port `3308` on the host machine to prevent port collisions with any local running MySQL instance.*
+
+4.  **Trace Application Logs**:
+    Observe live logging streams:
+    ```cmd
+    docker compose logs -f
+    ```
+
+5.  **Shutdown and Clean Volumes**:
+    Stop containers and remove runtime storage configurations:
+    ```cmd
+    docker compose down -v
     ```
 
 ---
 
-## 🎯 Verification: Testing the API
+## REST API Specifications
 
-You can test the end-to-end payment flow using **Postman** or **cURL** in Command Prompt (CMD):
+### 1. Initiate Payment Flow
+*   **Endpoint**: `POST http://localhost:8081/validation/createPayment`
+*   **Request Body**:
+    ```json
+    {
+      "userId": 302,
+      "paymentMethodId": 1,
+      "providerId": 1,
+      "paymentTypeId": 1,
+      "amount": 100.50,
+      "currency": "USD",
+      "merchantTransactionReference": "TXN-101"
+    }
+    ```
+*   **Response Payload**:
+    ```json
+    {
+      "txnReference": "f4309887-ce34-4c35-a94b-b417ef98736c",
+      "txnStatusId": 3,
+      "redirectUrl": "https://www.sandbox.paypal.com/checkoutnow?token=63V23857FS7491321",
+      "providerReference": "63V23857FS7491321"
+    }
+    ```
 
-### Step 1: Create & Initiate a Payment
-```cmd
-curl -X POST http://localhost:8081/validation/createPayment -H "Content-Type: application/json" -d "{\"userId\":302,\"paymentMethodId\":1,\"providerId\":1,\"paymentTypeId\":1,\"amount\":100.5,\"currency\":\"USD\",\"merchantTransactionReference\":\"TXN-101\"}"
-```
-
-**Response Output (PENDING state)**:
-```json
-{
-  "txnReference": "f4309887-ce34-4c35-a94b-b417ef98736c",
-  "txnStatusId": 3,
-  "redirectUrl": "https://www.sandbox.paypal.com/checkoutnow?token=63V23857FS7491321",
-  "providerReference": "63V23857FS7491321"
-}
-```
-
-### Step 2: Complete / Capture the Payment
-```cmd
-curl -X POST http://localhost:8081/validation/f4309887-ce34-4c35-a94b-b417ef98736c/completePayment
-```
-
----
-
-## 💡 Future Enhancements
-
-Here are some excellent ways to continue expanding this repository:
-*   **Automatic Reconciliation Scheduler**: Implement a Spring Scheduler task to query the PayPal status of stuck/unapproved payments (State `4` APPROVED or `3` PENDING) and auto-update the database records.
-*   **API Gateway**: Introduce a Spring Cloud API Gateway on port `8080` to act as a centralized entrypoint, handling dynamic routing, CORS, and Redis-based rate-limiting.
-*   **RabbitMQ / Kafka Event Bus**: Send asynchronous event messages to a queue for decoupled transaction audit logging and notifications.
-*   **Frontend Implementation**: Build a user interface/dashboard portal for payment processing status tracking.
-*   **Stripe Integration**: Add support for multiple payment providers dynamically.
-*   **JWT Authentication**: Secure internal microservices communication and gateway endpoints.
-*   **Kubernetes Deployment**: Orchestrate microservices using Kubernetes manifests.
-*   **AWS Cloud Deployment**: Deploy services on AWS EC2 instances, RDS databases, and Secrets Manager.
+### 2. Capture Completed Order
+*   **Endpoint**: `POST http://localhost:8081/validation/{txnReference}/completePayment`
+    *(Use the `txnReference` generated in step 1)*
 
 ---
 
-### Author
-**Rohit Singh**
-*Java Backend Developer | Spring Boot | Microservices | Docker*
+## Future Enhancements
+
+*   **Automatic Reconciliation Scheduler**: Implement a periodic Spring Batch/Scheduler task to check for transactions remaining in State `4` (APPROVED) or `3` (PENDING) and automatically capture them by querying PayPal status.
+*   **API Gateway Integration**: Construct a Spring Cloud Gateway module on port `8080` to act as the single traffic entrypoint for rate-limiting and JWT security.
+*   **RabbitMQ / Kafka Messaging**: Transition HTTP inter-service logging to asynchronous events via an MQ broker.
+*   **Multiple Providers**: Extend database mappings and factory loaders to support Stripe APIs.
+*   **AWS Orchestration**: Configure ECS/EKS deployments with Secrets Manager configurations.
