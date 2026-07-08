@@ -165,6 +165,9 @@ During testing, you can check active caches by reviewing container logs for `pay
     ```
     *Note: The MySQL container maps to port `3308` on the host machine to prevent port collisions with any local running MySQL instance.*
 
+### Running Containers Status (Docker Desktop)
+![Docker Desktop Status](docs/screenshots/docker_desktop_status.png)
+
 4.  **Trace Application Logs**:
     Observe live logging streams:
     ```cmd
@@ -209,6 +212,10 @@ During testing, you can check active caches by reviewing container logs for `pay
 *   **Endpoint**: `POST http://localhost:8081/validation/{txnReference}/completePayment`
     *(Use the `txnReference` generated in step 1)*
 
+### Database State Verification (MySQL Workbench)
+Once the capture step completes, the transaction state transitions to `4` (APPROVED) or `5` (SUCCESS) in the MySQL database:
+![MySQL Workbench Result](docs/screenshots/mysql_workbench_result.png)
+
 ---
 
 ## Future Enhancements
@@ -218,3 +225,13 @@ During testing, you can check active caches by reviewing container logs for `pay
 *   **RabbitMQ / Kafka Messaging**: Transition HTTP inter-service logging to asynchronous events via an MQ broker.
 *   **Multiple Providers**: Extend database mappings and factory loaders to support Stripe APIs.
 *   **AWS Orchestration**: Configure ECS/EKS deployments with Secrets Manager configurations.
+*   **Frontend Implementation**: Build a user interface/dashboard portal for payment processing status tracking.
+*   **JWT Authentication**: Secure internal microservices communication and gateway endpoints.
+*   **Kubernetes Deployment**: Orchestrate microservices using Kubernetes manifests.
+*   **AWS Cloud Deployment**: Deploy services on AWS EC2 instances, RDS databases, and Secrets Manager.
+
+---
+
+### Author
+**Rohit Singh**
+*Java Backend Developer | Spring Boot | Microservices | Docker*
