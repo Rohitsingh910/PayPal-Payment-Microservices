@@ -67,6 +67,15 @@ sequenceDiagram
 
 ---
 
+### Service Discovery Dashboard (Eureka)
+
+The active registration and mapping details of the microservices can be monitored through the Eureka dashboard:
+
+![Eureka Registry Dashboard](docs/screenshots/eureka_dashboard.png)
+![Eureka Service Metrics](docs/screenshots/eureka_general_info.png)
+
+---
+
 ## Detailed Directory and Code Structure
 
 Below is the directory mapping of the project modules:
