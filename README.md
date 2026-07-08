@@ -195,12 +195,24 @@ curl -X POST http://localhost:8081/validation/f4309887-ce34-4c35-a94b-b417ef9873
 
 ---
 
-## 💡 Future Enhancements
+## 💡 Future Roadmap & Enhancements
 
-Here are some excellent ways to continue expanding this repository:
-1.  **Automatic Reconciliation Job**: Implement a Spring Scheduler task to query the PayPal status of stuck/unapproved payments and auto-update the database records.
-2.  **API Gateway**: Introduce a Spring Cloud API Gateway on port `8080` to act as a centralized entrypoint, handling CORS, JWT auth, and rate-limiting.
-3.  **RabbitMQ Notifications**: Send asynchronous `PaymentCompletedEvent` messages to a queue for audit logging.
+To prepare this system for a production-scale release, the following components are planned:
+
+*   **API Gateway & Security**:
+    *   Integrate **Spring Cloud Gateway** as a single entrypoint for security, rate-limiting (using Redis RateLimiter), and CORS controls.
+    *   Implement **JWT (JSON Web Tokens) Authentication** to secure public endpoints.
+*   **Asynchronous Message Queues**:
+    *   Integrate **RabbitMQ / Apache Kafka** for event-driven payment audits, asynchronous email notifications, and webhook processing.
+*   **Automatic Reconciliation Scheduler**:
+    *   Develop a **Spring Batch / Spring Scheduler** reconciliation service that checks for database records stuck in `PENDING` (status 3) or `APPROVED` (status 4) state, polls PayPal APIs, and updates the local state to match.
+*   **Frontend Interface**:
+    *   Build a responsive web application dashboard using **Thymeleaf / HTML5, JavaScript & jQuery** to display live transactions, checkouts, and system metrics.
+*   **Multi-Provider Support**:
+    *   Extend the gateway to support **Stripe Integration** dynamically alongside PayPal.
+*   **Container Orchestration & Cloud Deployments**:
+    *   Create **Kubernetes (K8s) manifests** for scaling service pods and container auto-healing.
+    *   Deploy the production stack to **AWS EC2, RDS MySQL, and AWS Secrets Manager** for secure credentials handling.
 
 ---
 
